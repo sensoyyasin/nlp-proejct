@@ -1,5 +1,35 @@
 # nlp-proejct - Function Calling with Constrained Decoding
 
+## Main goal
+
+The goal of this project is to build a function calling system that turns natural-language requests into structured function calls. Given a prompt like "What is the sum of 2 and 3?", the program does not answer the question. Instead, it uses a small language model (Qwen3-0.6B) to choose the right function and extract its arguments, for example `fn_add_numbers` with `{"a": 2, "b": 3}`. Because small models are unreliable at producing structured output, the project uses constrained decoding: at each generation step, tokens that would break the JSON structure or the function schema are blocked, which guarantees 100% valid, schema-compliant JSON output.
+
+### Example
+
+Imagine a smart assistant that has access to a small set of tools, defined once in `functions_definition.json`:
+
+| Function | Parameters | Purpose |
+|----------|------------|---------|
+| `fn_get_weather` | `city: string`, `celsius: boolean` | Get the current weather for a city |
+| `fn_add_numbers` | `a: number`, `b: number` | Add two numbers |
+| `fn_greet` | `name: string` | Greet a person by name |
+
+Users can phrase their requests in many different ways, and the model maps each one to the right tool:
+
+| User prompt | Generated function call |
+|-------------|-------------------------|
+| "What's the weather like in Paris today, in Celsius?" | `{"name": "fn_get_weather", "parameters": {"city": "Paris", "celsius": true}}` |
+| "Is it cold in Tokyo right now?" | `{"name": "fn_get_weather", "parameters": {"city": "Tokyo", "celsius": false}}` |
+| "Can you tell me what 1500 plus 27 is?" | `{"name": "fn_add_numbers", "parameters": {"a": 1500.0, "b": 27.0}}` |
+| "Say hi to Shrek" | `{"name": "fn_greet", "parameters": {"name": "Shrek"}}` |
+
+Five different sentences, three tools, zero hand-written rules: the LLM understands the language, and constrained decoding guarantees the output structure.
+
+### Why not just let the LLM answer?
+
+An LLM alone cannot check today's weather, cannot be trusted to compute `48273 × 91856` correctly, and cannot actually send an email or write to a database. A function call bridges that gap: the model decides *what* to do, and a real program does it reliably.
+
+
 ## Description
 
 It's a function calling tool that translates natural-language requests into structured, machine-executable function calls using a small language model (**Qwen/Qwen3-0.6B**, ~0.6B parameters).
