@@ -1,6 +1,69 @@
-# nlp-proejct - Function Calling with Constrained Decoding
+# NLP-proejct - Function Calling with Constrained Decoding
 
 ## Main goal
+
+The user types a sentence such as "What is the sum of 2 and 3?". The task of the proram is not to give answer (5). But to generate JSON which function to call which args:
+
+Like this : {"prompt": "...", "name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}
+
+This is done by a small model, Qwen3-0.6B. Small models are bad at generating proper JSON, so you use constrained decoding: at each step you set the logit of tokens that would break the JSON or schema to -inf. This ensures the output is always valid. The model still chooses the function; you just disable invalid options.
+
+
+Days 1–2: Both of you together
+These two days set up everything else, so don’t split yet.
+* Run uv sync with numpy and pydantic, and copy llm_sdk next to src/.
+* Write the plain greedy loop: encode → get_logits_from_input_ids → argmax → append → repeat → decode.
+* Open the vocab file and look at how digits, quotes, Ġ, and Ċ appear.
+* Use the Qwen3 chat format with an empty <think>\n\n</think>\n\n block so the model doesn’t waste tokens thinking.
+Goal by end of day 2: you both understand the loop and can print raw model output.
+
+Days 3–7: Split the work
+Person A: the decoder
+* Day 3: Build the token ID → text table, decoding Ġ to a space and Ċ to a newline.
+* Day 4: Add the function-name constraint, allowing only tokens that extend a valid name prefix.
+* Days 5–6: Handle values: string first (easiest), then number, then boolean. Insert the JSON skeleton yourselves instead of generating it.
+* Day 7: Connect everything into one function: prompt in, {name, parameters} out.
+
+Person B: the shell
+* Day 3: Write the pydantic models for function definitions, prompts, and results.
+* Day 4: Write safe JSON loading and writing for missing files, invalid JSON, and an empty list, and make sure the program never crashes.
+* Day 5: Build the CLI with argparse (default paths and all three flags) and the Makefile.
+* Days 6–7: Write about 20 tricky test prompts (quotes in strings, negative numbers, floats, ambiguous wording) plus a script that scores accuracy and checks the output against the schema.
+
+Milestone on day 7: make run works end to end on the example files, even if accuracy is poor.
+
+Days 8–11: Make it good
+* Speed: Time a full run early, because the limit is 5 minutes. If it’s slow, precompute a numpy mask per token type once at startup instead of looping over the whole vocabulary at every step.
+* Accuracy: Run B’s tests, find the failures, and improve the prompt by listing the functions with their descriptions.
+* Edge cases: Numbers sometimes don’t stop, and strings can contain quotes. Escape them properly.
+* make lint must pass. Fix mypy errors as you go rather than leaving them all for the end.
+
+
+Days 12–14: Wrap up and defense prep
+* Write the README with every required section, starting with the italic first line naming your 42 logins. Fill the performance table with your real measurements.
+* Swap roles. A explains the shell to B, and B explains the decoder to A. Each person should modify the other’s code once, as if it were the live change at the defense.
+* Test on a fresh clone: uv sync then make run.
+
+The Generation pipeline
+* Prompt
+* Tokenization
+* Input IDs
+* LLM Processing
+* Logits
+* Token selection
+
+Prompt -> Tokenization -> Input IDs -> LLM -> Logits -> Next Token Selection,
+
+
+
+How to start, in order
+1. Read the llm_sdk/ folder together. Find out what it gives you: how to load the model, how to turn text into token IDs, how to get logits, and where the vocab file is.
+2. Make Qwen generate freely first, with no constraints. Give it “The capital of France is” and generate 10 tokens by always taking the highest logit. If this works, you understand the core loop.
+3. Open the vocab file and look at the tokens (Ġ, Ċ, and so on). Write the function that converts them to real text.
+4. Load the two JSON files and print them. This is independent of the model, so the second person can do it at the same time.
+5. Add the first constraint: function names only. This is the first real piece of the project.
+6. Then add parameter values, one type at a time: numbers first, then strings.
+
 
 The goal of this project is to build a function calling system that turns natural-language requests into structured function calls. Given a prompt like "What is the sum of 2 and 3?", the program does not answer the question. Instead, it uses a small language model (Qwen3-0.6B) to choose the right function and extract its arguments, for example `fn_add_numbers` with `{"a": 2, "b": 3}`. Because small models are unreliable at producing structured output, the project uses constrained decoding: at each generation step, tokens that would break the JSON structure or the function schema are blocked, which guarantees 100% valid, schema-compliant JSON output.
 
