@@ -55,7 +55,6 @@ The Generation pipeline
 Prompt -> Tokenization -> Input IDs -> LLM -> Logits -> Next Token Selection,
 
 
-
 How to start, in order
 1. Read the llm_sdk/ folder together. Find out what it gives you: how to load the model, how to turn text into token IDs, how to get logits, and where the vocab file is.
 2. Make Qwen generate freely first, with no constraints. Give it “The capital of France is” and generate 10 tokens by always taking the highest logit. If this works, you understand the core loop.
@@ -64,6 +63,7 @@ How to start, in order
 5. Add the first constraint: function names only. This is the first real piece of the project.
 6. Then add parameter values, one type at a time: numbers first, then strings.
 
+-----------------------------------------------------------------------------------------------------------------------
 
 The goal of this project is to build a function calling system that turns natural-language requests into structured function calls. Given a prompt like "What is the sum of 2 and 3?", the program does not answer the question. Instead, it uses a small language model (Qwen3-0.6B) to choose the right function and extract its arguments, for example `fn_add_numbers` with `{"a": 2, "b": 3}`. Because small models are unreliable at producing structured output, the project uses constrained decoding: at each generation step, tokens that would break the JSON structure or the function schema are blocked, which guarantees 100% valid, schema-compliant JSON output.
 
