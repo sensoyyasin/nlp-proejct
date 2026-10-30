@@ -1,175 +1,112 @@
-# NLP-proejct - Function Calling with Constrained Decoding
+# Function Calling with Constrained Decoding
 
-## Main goal
-
-The user types a sentence such as "What is the sum of 2 and 3?". The task of the proram is not to give answer (5). But to generate JSON which function to call which args:
-
-Like this : {"prompt": "...", "name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}
-
-This is done by a small model, Qwen3-0.6B. Small models are bad at generating proper JSON, so you use constrained decoding: at each step you set the logit of tokens that would break the JSON or schema to -inf. This ensures the output is always valid. The model still chooses the function; you just disable invalid options.
-
-
-Days 1–2: Both of you together
-These two days set up everything else, so don’t split yet.
-* Run uv sync with numpy and pydantic, and copy llm_sdk next to src/.
-* Write the plain greedy loop: encode → get_logits_from_input_ids → argmax → append → repeat → decode.
-* Open the vocab file and look at how digits, quotes, Ġ, and Ċ appear.
-* Use the Qwen3 chat format with an empty <think>\n\n</think>\n\n block so the model doesn’t waste tokens thinking.
-Goal by end of day 2: you both understand the loop and can print raw model output.
-
-Days 3–7: Split the work
-Person A: the decoder
-* Day 3: Build the token ID → text table, decoding Ġ to a space and Ċ to a newline.
-* Day 4: Add the function-name constraint, allowing only tokens that extend a valid name prefix.
-* Days 5–6: Handle values: string first (easiest), then number, then boolean. Insert the JSON skeleton yourselves instead of generating it.
-* Day 7: Connect everything into one function: prompt in, {name, parameters} out.
-
-Person B: the shell
-* Day 3: Write the pydantic models for function definitions, prompts, and results.
-* Day 4: Write safe JSON loading and writing for missing files, invalid JSON, and an empty list, and make sure the program never crashes.
-* Day 5: Build the CLI with argparse (default paths and all three flags) and the Makefile.
-* Days 6–7: Write about 20 tricky test prompts (quotes in strings, negative numbers, floats, ambiguous wording) plus a script that scores accuracy and checks the output against the schema.
-
-Milestone on day 7: make run works end to end on the example files, even if accuracy is poor.
-
-Days 8–11: Make it good
-* Speed: Time a full run early, because the limit is 5 minutes. If it’s slow, precompute a numpy mask per token type once at startup instead of looping over the whole vocabulary at every step.
-* Accuracy: Run B’s tests, find the failures, and improve the prompt by listing the functions with their descriptions.
-* Edge cases: Numbers sometimes don’t stop, and strings can contain quotes. Escape them properly.
-* make lint must pass. Fix mypy errors as you go rather than leaving them all for the end.
-
-
-Days 12–14: Wrap up and defense prep
-* Write the README with every required section, starting with the italic first line naming your 42 logins. Fill the performance table with your real measurements.
-* Swap roles. A explains the shell to B, and B explains the decoder to A. Each person should modify the other’s code once, as if it were the live change at the defense.
-* Test on a fresh clone: uv sync then make run.
-
-The Generation pipeline
-* Prompt
-* Tokenization
-* Input IDs
-* LLM Processing
-* Logits
-* Token selection
-
-Prompt -> Tokenization -> Input IDs -> LLM -> Logits -> Next Token Selection,
-
-
-How to start, in order
-1. Read the llm_sdk/ folder together. Find out what it gives you: how to load the model, how to turn text into token IDs, how to get logits, and where the vocab file is.
-2. Make Qwen generate freely first, with no constraints. Give it “The capital of France is” and generate 10 tokens by always taking the highest logit. If this works, you understand the core loop.
-3. Open the vocab file and look at the tokens (Ġ, Ċ, and so on). Write the function that converts them to real text.
-4. Load the two JSON files and print them. This is independent of the model, so the second person can do it at the same time.
-5. Add the first constraint: function names only. This is the first real piece of the project.
-6. Then add parameter values, one type at a time: numbers first, then strings.
-
------------------------------------------------------------------------------------------------------------------------
-
-The goal of this project is to build a function calling system that turns natural-language requests into structured function calls. Given a prompt like "What is the sum of 2 and 3?", the program does not answer the question. Instead, it uses a small language model (Qwen3-0.6B) to choose the right function and extract its arguments, for example `fn_add_numbers` with `{"a": 2, "b": 3}`. Because small models are unreliable at producing structured output, the project uses constrained decoding: at each generation step, tokens that would break the JSON structure or the function schema are blocked, which guarantees 100% valid, schema-compliant JSON output.
-
-### Example
-
-Imagine a smart assistant that has access to a small set of tools, defined once in `functions_definition.json`:
-
-| Function | Parameters | Purpose |
-|----------|------------|---------|
-| `fn_get_weather` | `city: string`, `celsius: boolean` | Get the current weather for a city |
-| `fn_add_numbers` | `a: number`, `b: number` | Add two numbers |
-| `fn_greet` | `name: string` | Greet a person by name |
-
-Users can phrase their requests in many different ways, and the model maps each one to the right tool:
-
-| User prompt | Generated function call |
-|-------------|-------------------------|
-| "What's the weather like in Paris today, in Celsius?" | `{"name": "fn_get_weather", "parameters": {"city": "Paris", "celsius": true}}` |
-| "Is it cold in Tokyo right now?" | `{"name": "fn_get_weather", "parameters": {"city": "Tokyo", "celsius": false}}` |
-| "Can you tell me what 1500 plus 27 is?" | `{"name": "fn_add_numbers", "parameters": {"a": 1500.0, "b": 27.0}}` |
-| "Say hi to Shrek" | `{"name": "fn_greet", "parameters": {"name": "Shrek"}}` |
-
-Five different sentences, three tools, zero hand-written rules: the LLM understands the language, and constrained decoding guarantees the output structure.
-
-### Why not just let the LLM answer?
-
-An LLM alone cannot check today's weather, cannot be trusted to compute `48273 × 91856` correctly, and cannot actually send an email or write to a database. A function call bridges that gap: the model decides *what* to do, and a real program does it reliably.
-
-
-## Description
-
-It's a function calling tool that translates natural-language requests into structured, machine-executable function calls using a small language model (**Qwen/Qwen3-0.6B**, ~0.6B parameters).
-
-Given a prompt such as:
+Turn a natural-language request into a structured function call using a small language model (**Qwen3-0.6B**).
 
 ```
-"What is the sum of 40 and 2?"
+"What is the sum of 2 and 3?"
+        ↓
+{"prompt": "What is the sum of 2 and 3?", "name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}
 ```
 
-the program does **not** answer `42`. Instead, it produces:
+The program does **not** answer the question (`5`). It decides **which function** to call and **with which arguments**.
 
-```json
-{
-  "prompt": "What is the sum of 40 and 2?",
-  "name": "fn_add_numbers",
-  "parameters": {"a": 40.0, "b": 2.0}
-}
+Small models are unreliable at writing JSON: they wrap it in ```` ```json ```` fences, invent function names, put numbers in quotes or forget closing braces. **Constrained decoding** fixes this: at every generation step, tokens that would break the JSON or the schema get a logit of `-inf`, so they can never be chosen. The model still picks the function and the values; it just can't produce invalid output.
+
+```
+Prompt → Tokenization → Input IDs → LLM → Logits → [mask invalid tokens] → Next token
 ```
 
-Small models are unreliable at producing structured output when simply prompted. This project solves that with **constrained decoding**: at every generation step, the logits of tokens that would break the JSON structure or the function schema are set to negative infinity, so the model can only choose among valid continuations. The result is **100% parseable, schema-compliant JSON**, while the model itself still decides *which* function to call and *what* the argument values are.
+---
 
-### Key features
+## Progress
 
-- Function selection performed by the LLM (no keyword heuristics).
-- Token-level constrained decoding driven by the model vocabulary file.
-- Schema enforcement for `number`, `integer`, `string` and `boolean` argument types.
-- Validation of inputs and outputs with **pydantic**.
-- Graceful handling of missing files, invalid JSON and malformed definitions.
-- Fully typed code, `flake8` and `mypy` clean.
+### Days 1–2 · Together
+- [ ] Read `llm_sdk/`
+- [ ] Set up the project: `uv add numpy pydantic` and `llm_sdk`
+- [ ] Generate 10 tokens from *"The capital of France is"* without constraints
+- [ ] Print a few entries of `vocab.json` to see how tokens look
+- [ ] Wrap prompts in the Qwen3 chat format, with thinking turned off
+
+### Days 3–7 · Person A — Decoder
+- [ ] Day 3 · Table: token ID → real text
+- [ ] Day 4 · Force the function name to be one from the list
+- [ ] Day 5 · Generate string values
+- [ ] Day 6 · Generate number and boolean values; write `{`, keys and `}` ourselves
+- [ ] Day 7 · `generate(prompt)` returns `{name, parameters}`
+
+### Days 3–7 · Person B — Shell
+- [ ] Day 3 · pydantic models (function definition, prompt, result)
+- [ ] Day 4 · Read/write JSON files without crashing on bad input
+- [ ] Day 5 · Command-line arguments and Makefile
+- [ ] Days 6–7 · ~20 hard test prompts and a script that scores them
+
+**🏁 Milestone (day 7):** `make run` works on the example files.
+
+### Days 8–11 · Make it good
+- [ ] Full run finishes in under 5 minutes
+- [ ] Fix failing test prompts by improving the prompt
+- [ ] Numbers stop correctly
+- [ ] Quotes inside strings are escaped
+- [ ] `make lint` passes
+
+### Days 12–14 · Wrap up
+- [ ] Fill the performance table with real numbers
+- [ ] Each person explains and changes the other's code once
+- [ ] Fresh clone: `uv sync` and `make run` work
+
+---
+
+## `llm_sdk` cheat sheet
+
+| Method | Returns | Note |
+|--------|---------|------|
+| `Small_LLM_Model()` | model | Loads `Qwen/Qwen3-0.6B` (mps → cuda → cpu) |
+| `encode(text)` | 2-D `torch.Tensor` | Use `encode(text)[0].tolist()` to get `list[int]` |
+| `get_logits_from_input_ids(ids)` | `list[float]` | One score per vocab token (~151k). No KV cache: reprocesses the whole sequence every call |
+| `decode(ids)` | `str` | Skips special tokens |
+| `get_path_to_vocab_file()` | `str` | Path to `vocab.json` |
+
+The SDK has no chat-template helper: the Qwen chat format (`<|im_start|>user … <|im_end|>`) must be built by hand.
 
 ---
 
 ## Instructions
 
 ### Requirements
-
 - Python **3.10+**
 - [uv](https://docs.astral.sh/uv/)
-- The provided `llm_sdk/` package, placed at the repository root (next to `src/`)
+- The provided `llm_sdk/` package at the repository root (next to `src/`)
 
 ### Installation
-
 ```bash
-make install      # equivalent to: uv sync
+make install      # uv sync
 ```
 
 ### Running
-
 ```bash
 make run
 ```
-
-or directly:
-
+or:
 ```bash
 uv run python -m src \
     --functions_definition data/input/functions_definition.json \
     --input data/input/function_calling_tests.json \
     --output data/output/function_calling_results.json
 ```
-
-All arguments are optional. By default, inputs are read from `data/input/` and results are written to `data/output/function_calling_results.json`.
+All arguments are optional. Defaults read from `data/input/` and write to `data/output/function_calling_results.json`.
 
 ### Makefile rules
 
 | Rule | Description |
 |------|-------------|
-| `make install` | Install dependencies with `uv` |
-| `make run` | Run the program with default paths |
-| `make debug` | Run the program under `pdb` |
+| `make install` | Install dependencies with uv |
+| `make run` | Run with default paths |
+| `make debug` | Run under `pdb` |
 | `make clean` | Remove `__pycache__`, `.mypy_cache` and other caches |
-| `make lint` | Run `flake8 .` and `mypy` with the required flags |
-| `make lint-strict` | Run `flake8 .` and `mypy . --strict` |
+| `make lint` | `flake8 .` and mypy with the required flags |
+| `make lint-strict` | `flake8 .` and `mypy . --strict` |
 
 ### Project structure
-
 ```
 .
 ├── Makefile
@@ -177,164 +114,104 @@ All arguments are optional. By default, inputs are read from `data/input/` and r
 ├── pyproject.toml
 ├── uv.lock
 ├── llm_sdk/                  # provided SDK
-├── data/
-│   └── input/
-│       ├── functions_definition.json
-│       └── function_calling_tests.json
+├── data/input/
+│   ├── functions_definition.json
+│   └── function_calling_tests.json
 └── src/
     ├── __main__.py           # CLI entry point
-    ├── models.py             # pydantic models (definitions, prompts, results)
-    ├── io_utils.py           # safe loading / writing of JSON files
-    ├── vocabulary.py         # vocabulary loading and token string decoding
+    ├── models.py             # pydantic models
+    ├── io_utils.py           # safe JSON loading / writing
+    ├── vocabulary.py         # vocab loading and token decoding
     ├── constraints.py        # schema-driven allowed-token logic
     ├── decoder.py            # constrained generation loop
-    └── prompt_builder.py     # prompt construction for the model
+    └── prompt_builder.py     # prompt construction
 ```
-
-> Adapt the file names above to match your actual implementation.
 
 ---
 
-## Algorithm Explanation
+## Algorithm
 
-### 1. The generation loop
+### 1. Generation loop
+1. Get logits for the current sequence with `get_logits_from_input_ids`.
+2. Compute which tokens keep the output valid in the current state.
+3. Set every other logit to `-inf`.
+4. Pick the highest remaining logit (greedy).
+5. Append the token, update the state, repeat.
 
-A language model generates text one token at a time:
+Invalid tokens can never be selected, so the output is valid **by construction**.
 
-```
-prompt → token IDs → LLM → logits → next token → append → repeat
-```
-
-Constrained decoding inserts a filter between *logits* and *next token*:
-
-1. Get the logits for the current sequence with `get_logits_from_input_ids`.
-2. Compute the set of tokens that keep the output valid given the current state.
-3. Set the logits of every other token to `-inf`.
-4. Pick the highest remaining logit (greedy decoding).
-5. Append the token and update the decoder state.
-
-Because invalid tokens can never be selected, the output is valid **by construction**, not by luck.
-
-### 2. Mapping tokens to strings
-
-The vocabulary file (from `get_path_to_vocab_file()`) maps token IDs to their string form. Qwen uses a byte-level BPE tokenizer, so token strings contain special characters:
-
-- `Ġ` represents a leading space
-- `Ċ` represents a newline
-
-At startup, every token is decoded once into its real text and stored in a lookup table (`token_id → text`). This table is what makes it possible to answer "would this token keep the JSON valid?" for the whole vocabulary at each step.
+### 2. Token → text table
+Qwen uses byte-level BPE, so vocab strings contain special characters (`Ġ` = leading space, `Ċ` = newline). Every token is decoded once at startup into a `token_id → text` table, which is what lets each step check the whole vocabulary quickly.
 
 ### 3. Two-phase decoding
 
-The output object is generated in two phases, each with its own constraint.
-
-#### Phase A — function name selection
-
-The set of valid function names is known in advance (from `functions_definition.json`). The decoder keeps the text generated so far for the name and, at each step, only allows tokens whose text extends the current prefix toward **at least one** valid name:
-
+**Phase A — function name.** Only tokens that keep the generated text a prefix of at least one valid name are allowed:
 ```
 allowed(token) ⇔ ∃ name ∈ names : (current + token_text) is a prefix of name
 ```
+The phase ends when the text matches a full name and no longer name shares the prefix.
 
-When the generated text exactly matches a full name and no longer name shares that prefix, the phase ends. The model therefore chooses the function, but can only "spell" names that exist.
-
-#### Phase B — arguments, driven by the schema
-
-Once the function is chosen, its parameter schema is known. The JSON skeleton (`{`, keys, `:`, `,`, `}`) is fully determined by the schema, so it is **inserted directly** without asking the model. The model is only consulted for the **values**, each with a type-specific constraint:
+**Phase B — arguments.** The JSON skeleton (`{`, keys, `:`, `,`, `}`) is determined by the schema, so it is inserted directly. The model only generates **values**:
 
 | Type | Allowed tokens | End condition |
 |------|----------------|---------------|
-| `number` | Tokens composed of digits, at most one `.`, an optional leading `-`, and the result must remain a valid numeric prefix | A token that cannot extend the number becomes most likely, or a terminator (`,` / `}`) is chosen |
-| `integer` | Same as `number`, without `.` | Same as above |
-| `string` | Any token that does not contain an unescaped `"` or a control character | The closing `"` token is chosen |
-| `boolean` | Tokens that extend toward `true` or `false` | Full literal reached |
+| `number` | Digits, at most one `.`, optional leading `-`, must stay a valid numeric prefix | A terminator (`,` / `}`) wins over digits |
+| `integer` | Same as number, without `.` | Same |
+| `string` | Any token without an unescaped `"` or control character | Closing `"` chosen |
+| `boolean` | Tokens extending toward `true` / `false` | Full literal reached |
 
-Each value is then validated (e.g. `float(...)` for numbers) and converted to the correct Python type before being stored.
+Each value is validated and converted to the correct Python type.
 
-### 4. Assembling the result
-
-The chosen name and the decoded arguments are wrapped in a pydantic model, validated against the function definition (all required parameters present, correct types, no extra keys), and written to the output file with `json.dump`. Because both phases are constrained, parsing never fails.
+### 4. Result
+Name and arguments are wrapped in a pydantic model, validated against the definition (required keys, types, no extras) and written with `json.dump`.
 
 ---
 
 ## Design Decisions
-
-- **Schema skeleton is injected, not generated.** Keys, braces and separators are deterministic, so letting the model generate them only wastes forward passes and adds risk. Injecting them reduces the number of LLM calls to roughly the number of *value* tokens.
-- **Greedy decoding.** For function calling, the goal is the most likely correct answer, not diversity. Greedy selection is deterministic, which makes debugging and evaluation reproducible.
-- **Precomputed token table.** Decoding all vocabulary strings once at startup avoids repeated string processing inside the generation loop, which runs once per generated token.
-- **Prefix filtering for names instead of scoring each name.** Prefix filtering lets the model choose freely among valid names with a single generation pass, rather than computing a full likelihood for every candidate function.
-- **Prompt with function descriptions.** The prompt lists the available functions with their descriptions and parameters so the model has the context to make the right choice. The prompt helps *accuracy*; constrained decoding guarantees *validity*. The project never relies on the prompt alone for structure.
-- **pydantic everywhere.** Input files, function definitions and results are all pydantic models, so malformed data is rejected early with clear error messages instead of failing deep inside the decoder.
-- **Fail per prompt, not per run.** If one prompt fails (e.g. an unexpected model error), the error is reported and processing continues with the next prompt.
+- **Skeleton injected, not generated** — fewer forward passes, less risk.
+- **Greedy decoding** — deterministic, reproducible, picks the most likely answer.
+- **Precomputed token table** — no string processing inside the hot loop.
+- **Prefix filtering for names** — one generation pass instead of scoring every function.
+- **Function descriptions in the prompt** — the prompt helps *accuracy*; constrained decoding guarantees *validity*.
+- **pydantic everywhere** — malformed data is rejected early with clear errors.
+- **Fail per prompt, not per run** — one failing prompt doesn't stop the others.
 
 ---
 
 ## Performance Analysis
 
-> Replace the placeholders below with your own measurements.
-
 | Metric | Result |
 |--------|--------|
-| Valid JSON output | 100% (guaranteed by construction) |
-| Schema compliance | 100% (guaranteed by construction) |
-| Correct function selection | `<X>%` on `<N>` test prompts |
-| Correct argument extraction | `<Y>%` on `<N>` test prompts |
-| Total processing time | `<T>` seconds for `<N>` prompts on `<hardware>` |
+| Valid JSON output | 100% (by construction) |
+| Schema compliance | 100% (by construction) |
+| Correct function selection | `<X>%` on `<N>` prompts |
+| Correct argument extraction | `<Y>%` on `<N>` prompts |
+| Total processing time | `<T>` s for `<N>` prompts on `<hardware>` |
 
-**Observations**
-
-- Validity is never the bottleneck: errors that remain are *semantic* (wrong function or wrong value), not structural.
-- Most of the runtime is spent in model forward passes. Injecting the schema skeleton and stopping value generation as soon as a terminator is reached significantly reduces the number of calls.
-- Accuracy depends mainly on prompt quality and on how clearly the function descriptions differ from each other.
+**Baseline without constrained decoding** (Qwen3-0.6B via Ollama, same 11 example prompts, temperature 0): **0/11** outputs could be parsed with `json.loads` (all wrapped in ```` ```json ```` fences, one with unbalanced braces and invented keys). With schema-constrained decoding: **11/11** valid. Remaining errors are semantic, e.g. `regex: "NUMBERS"` instead of `\d+`.
 
 ---
 
 ## Challenges Faced
-
-- **Byte-level token strings.** Tokens do not map one-to-one to readable text (`Ġ`, `Ċ`, partial UTF-8 sequences). A dedicated decoding step was required to build a reliable `token → text` table.
-- **Tokens spanning several JSON parts.** A single token can contain, for example, a digit followed by a comma (`"2,"`). The constraint logic must check the *whole* token text against the current state, not only its first character, and handle the case where a token both ends a value and starts the next structure.
-- **Knowing when a number ends.** Unlike strings, numbers have no closing delimiter. The decoder must allow a terminator to compete with digit tokens so the model itself decides when the number is complete.
-- **Strings containing quotes or special characters.** Prompts such as `Reverse the string 'hello "world"'` require correct escaping of the generated value before it is written as JSON.
-- **Speed.** Filtering ~150k tokens at every step is expensive in pure Python. Precomputing token properties (e.g. "is numeric", "contains a quote") once at startup made the per-step filtering fast enough to stay well under the 5-minute limit.
+- **Byte-level tokens** — `Ġ`, `Ċ` and partial UTF-8 sequences need a dedicated decoding step.
+- **Tokens spanning JSON parts** — a token like `2,` ends a value and starts a separator; the whole token text must be checked.
+- **Numbers have no closing delimiter** — terminators must compete with digit tokens so the model decides when to stop.
+- **Quotes inside strings** — e.g. `Reverse the string 'hello "world"'` requires correct escaping.
+- **Speed** — filtering ~150k tokens per step in pure Python is slow; precomputed numpy masks fix it.
 
 ---
 
 ## Testing Strategy
-
-- **Unit tests** (pytest, not submitted) for:
-  - vocabulary decoding (`Ġ`, `Ċ`, special tokens),
-  - allowed-token computation for each type (number, integer, string, boolean),
-  - function name prefix filtering,
-  - input loading with missing files, empty files and invalid JSON.
-- **End-to-end tests** on the provided example files and on custom files with:
-  - empty strings and strings with quotes, unicode and special characters,
-  - large and negative numbers, floats,
-  - functions with several parameters of different types,
-  - ambiguous prompts and functions with similar descriptions.
-- **Output validation**: every produced file is reloaded with `json.load` and checked against the function definitions (names, required keys, types, no extra keys).
-- **Static checks**: `make lint` (flake8 + mypy) on every change.
+- **Unit tests** (pytest, not submitted): vocab decoding, allowed tokens per type, name prefix filtering, loading missing/empty/invalid files.
+- **End-to-end tests**: quotes, unicode, empty strings, negative and large numbers, floats, multi-parameter functions, ambiguous prompts.
+- **Output validation**: every result file is reloaded and checked against the definitions.
+- **Static checks**: `make lint` on every change.
 
 ---
 
-## Example Usage
+## Example
 
-Default paths:
-
-```bash
-uv run python -m src
-```
-
-Custom paths:
-
-```bash
-uv run python -m src \
-    --functions_definition data/input/functions_definition.json \
-    --input data/input/function_calling_tests.json \
-    --output data/output/function_calling_results.json
-```
-
-Example input (`function_calling_tests.json`):
-
+Input (`function_calling_tests.json`):
 ```json
 [
   {"prompt": "What is the sum of 2 and 3?"},
@@ -343,30 +220,16 @@ Example input (`function_calling_tests.json`):
 ]
 ```
 
-Example output (`function_calling_results.json`):
-
+Output (`function_calling_results.json`):
 ```json
 [
-  {
-    "prompt": "What is the sum of 2 and 3?",
-    "name": "fn_add_numbers",
-    "parameters": {"a": 2.0, "b": 3.0}
-  },
-  {
-    "prompt": "Greet shrek",
-    "name": "fn_greet",
-    "parameters": {"name": "shrek"}
-  },
-  {
-    "prompt": "Reverse the string 'hello'",
-    "name": "fn_reverse_string",
-    "parameters": {"s": "hello"}
-  }
+  {"prompt": "What is the sum of 2 and 3?", "name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}},
+  {"prompt": "Greet shrek", "name": "fn_greet", "parameters": {"name": "shrek"}},
+  {"prompt": "Reverse the string 'hello'", "name": "fn_reverse_string", "parameters": {"s": "hello"}}
 ]
 ```
 
-Error handling example:
-
+Error handling:
 ```bash
 $ uv run python -m src --input missing.json
 Error: input file 'missing.json' was not found.
@@ -376,12 +239,12 @@ Error: input file 'missing.json' was not found.
 
 ## Resources
 
-### References
-
 - [JSON specification (RFC 8259)](https://datatracker.ietf.org/doc/html/rfc8259)
-- [Qwen3 model card — Hugging Face](https://huggingface.co/Qwen/Qwen3-0.6B)
-- [Byte-Pair Encoding tokenization — Hugging Face NLP course](https://huggingface.co/learn/nlp-course/chapter6/5)
-- Willard & Louf, *Efficient Guided Generation for Large Language Models* (2023) — the theory behind regex/grammar-constrained decoding
-- [pydantic documentation](https://docs.pydantic.dev/)
-- [uv documentation](https://docs.astral.sh/uv/)
-- [mypy documentation](https://mypy.readthedocs.io/)
+- [Qwen3-0.6B model card](https://huggingface.co/Qwen/Qwen3-0.6B)
+- [Byte-Pair Encoding — Hugging Face NLP course](https://huggingface.co/learn/nlp-course/chapter6/5)
+- Willard & Louf, *Efficient Guided Generation for Large Language Models* (2023)
+- [Constrained decoding explained — Aidan Cooper](https://www.aidancooper.co.uk/constrained-decoding/)
+- [pydantic](https://docs.pydantic.dev/) · [uv](https://docs.astral.sh/uv/) · [mypy](https://mypy.readthedocs.io/)
+
+### AI usage
+<Describe how AI was used in this project.>
