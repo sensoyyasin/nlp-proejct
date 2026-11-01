@@ -21,11 +21,11 @@ Prompt → Tokenization → Input IDs → LLM → Logits → [mask invalid token
 ## Progress
 
 ### Days 1–2 · Together
-- [ ] Read `llm_sdk/`
-- [ ] Set up the project: `uv add numpy pydantic` and `llm_sdk`
-- [ ] Generate 10 tokens from *"The capital of France is"* without constraints
-- [ ] Print a few entries of `vocab.json` to see how tokens look
-- [ ] Wrap prompts in the Qwen3 chat format, with thinking turned off
+- [X] Read `llm_sdk/`
+- [X] Set up the project: `uv add numpy pydantic` and `llm_sdk`
+- [X] Generate 10 tokens from *"The capital of France is"* without constraints
+- [X] Print a few entries of `vocab.json` to see how tokens look
+- [X] Wrap prompts in the Qwen3 chat format, with thinking turned off
 
 ### Days 3–7 · Person A — Decoder
 - [ ] Day 3 · Table: token ID → real text
