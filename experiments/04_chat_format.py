@@ -1,42 +1,69 @@
 from llm_sdk import Small_LLM_Model
 
+'''
+Qwen3 is a chat model. We need to thinking turned off.
+
+The format looks like:
+<|im_start|>system
+{system message}<|im_end|>
+<|im_start|>user
+{user message}<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+'''
+
+def argmax(values):
+    # Return the index of the largest value in a list.
+    best_index = 0
+    for index in range(1, len(values)):
+        if values[index] > values[best_index]:
+            best_index = index
+    return best_index
+
+def build_chat_prompt(system_message, user_message):
+    prompt = ""
+    prompt += "<|im_start|>system\n" + system_message + "<|im_end|>\n"
+    prompt += "<|im_start|>user\n" + user_message + "<|im_end|>\n"
+    prompt += "<|im_start|>assistant\n"
+    prompt += "<think>\n\n</think>\n\n"
+
+    return prompt
+
+
 model = Small_LLM_Model()
 
-# Qwen3 chat format, built by hand. The empty <think></think> block turns thinking off.
-system = (
-    "You convert a user request into a function call. "
-    "Available functions:\n"
-    "- fn_add_numbers(a: number, b: number): Add two numbers.\n"
-    "- fn_greet(name: string): Greet a person.\n"
-    "- fn_reverse_string(s: string): Reverse a string.\n"
-    'Reply with JSON: {"name": ..., "parameters": {...}}'
-)
+system_message = "You are a helpful assistant. Answer briefly."
+user_message = "What is the capital of France?"
 
-user = "What is the sum of 2 and 3?"
+prompt = build_chat_prompt(system_message, user_message)
+print("Full prompt:")
+print(prompt)
+print("-" * 40)
 
-prompt = (
-    f"<|im_start|>system\n{system}<|im_end|>\n"
-    f"<|im_start|>user\n{user}<|im_end|>\n"
-    "<|im_start|>assistant\n"
-    "<think>\n\n</think>\n\n"
-)
+# Convert the prompt into token IDs
+input_ids = model.encode(prompt)[0].tolist()
 
-ids = model.encode(prompt)[0].tolist()
-print("Prompt length (tokens):", len(ids))
-print("Last 8 prompt tokens:", [model.decode([i]) for i in ids[-8:]])
+# The model ends its answer with  <|im_end|>; find its ID so we can stop there
+end_id = model.encode("<|im_end|>")[0].tolist()[0]
+print("ID of <|im_end|>:", end_id)
 
-# Special tokens: how are they encoded?
-for special in ["<|im_start|>", "<|im_end|>", "<|endoftext|>"]:
-    enc = model.encode(special)[0].tolist()
-    print(f"{special!r} -> ids {enc}")
+# Generate until the model produces <|im_end|> or we hit the limit
+max_new_tokens = 30
+generated_ids = []
 
-# Unconstrained greedy generation, to see what the raw model does
-print("\n--- Unconstrained output ---")
-generated = []
-for _ in range(60):
-    logits = model.get_logits_from_input_ids(ids)
-    next_id = max(range(len(logits)), key=lambda i: logits[i])
-    ids.append(next_id)
-    generated.append(next_id)
-    print(f"id={next_id:<7} token={model.decode([next_id])!r}")
-print("\nFull output:\n" + model.decode(generated))
+for step in range(max_new_tokens):
+    logits = model.get_logits_from_input_ids(input_ids)
+    next_id = argmax(logits)
+
+    # Stop when the model says it is done
+    if next_id == end_id:
+        print(f"(stopped at step {step + 1}: model produced <|im_end|>)")
+        break
+
+    input_ids.append(next_id)
+    generated_ids.append(next_id)
+
+#  Show the answer
+print("Answer:", repr(model.decode(generated_ids)))

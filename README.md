@@ -1,5 +1,7 @@
 # Function Calling with Constrained Decoding
 
+execute : python experiments/04_chat_format.py
+
 Turn a natural-language request into a structured function call using a small language model (**Qwen3-0.6B**).
 
 ```
