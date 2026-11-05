@@ -30,7 +30,7 @@ Prompt → Tokenization → Input IDs → LLM → Logits → [mask invalid token
 - [X] Wrap prompts in the Qwen3 chat format, with thinking turned off
 
 ### Days 3–7 · Person A — Decoder
-- [ ] Day 3 · Table: token ID → real text
+- [X] Day 3 · Table: token ID → real text
 - [ ] Day 4 · Force the function name to be one from the list
 - [ ] Day 5 · Generate string values
 - [ ] Day 6 · Generate number and boolean values; write `{`, keys and `}` ourselves
