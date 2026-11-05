@@ -248,5 +248,53 @@ Error: input file 'missing.json' was not found.
 - [Constrained decoding explained — Aidan Cooper](https://www.aidancooper.co.uk/constrained-decoding/)
 - [pydantic](https://docs.pydantic.dev/) · [uv](https://docs.astral.sh/uv/) · [mypy](https://mypy.readthedocs.io/)
 
-### AI usage
-<Describe how AI was used in this project.>
+
+---
+
+## Decoder plan (Person A · Days 4–7)
+
+### Day 4 · Force the function name
+**File:** `experiments/06_function_name.py`
+
+1. Build the prompt in chat format (like `04`). Put the function list in the system message, and end the prompt with `{"name": "` so the model starts writing the name right away.
+2. Loop (like `02_generate.py`), but at each step:
+   - If `generated + table[i]` is not the start of a valid name, or `table[i]` is `None`, set its logit to `-inf`.
+   - Pick the argmax of the remaining tokens.
+3. Stop when the generated text is a full name and no longer name shares that prefix.
+4. Test: *"What is the sum of 2 and 3?"* → `fn_add_numbers`
+
+> **Why:** the model can never invent a name that isn't in the list.
+
+### Day 5 · Generate string values
+**File:** `experiments/07_string_value.py`
+
+1. End the prompt with `... "s": "`.
+2. Allowed tokens: those without `"` or a newline in them.
+3. Stop when the model picks a token containing a quote. Watch out for tokens like `` ` "` `` (space + quote): the quote can be **inside** a longer token.
+4. Test: *"Reverse the string 'hello'"* → `hello`
+
+### Day 6 · Numbers and booleans; we write the skeleton
+**File:** `experiments/08_number_bool.py`
+
+1. **Number:** only digits, one `.`, and a leading `-`, plus `,` or `}` as the "stop" option. Digits are tokenized one by one, so at each step the model decides: one more digit, or stop?
+2. **Boolean:** only tokens that are a prefix of `true` or `false`.
+3. **Skeleton:** the model does not generate `{`, `"a": `, `,` or `}`. We insert them into the text ourselves, and the model only fills in the values.
+
+> **Why:** fewer steps, faster, and broken JSON is impossible.
+
+### Day 7 · Put it all together
+**File:** `src/decoder.py`
+
+1. `generate(prompt)` → `{"name": ..., "parameters": {...}}`
+2. Flow: name (Day 4) → look up that function's parameters → for each parameter, generate a string / number / boolean based on its type (Days 5–6).
+3. Move the Day 3 table code into `src/vocabulary.py`.
+4. Connect with Person B's pydantic models.
+
+**🏁 Goal:** `make run` works on the example files.
+
+### Side tasks
+- [ ] Fix `{token_id:<7}` in `03_vocab.py`
+- [ ] Create `.gitignore`; commit 01–05, `pyproject.toml` and `uv.lock`
+- [ ] `uv python pin 3.13`
+- [ ] README: use `uv run python experiments/...`, and don't clone into Desktop/Documents (iCloud)
+- [ ] Decide what to do with `test_project_data.py`
